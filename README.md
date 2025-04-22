@@ -24,3 +24,17 @@ Reconstruction from 32 simulated dithered camera images With Subpixel Normalizat
 SSIMULACRA2 score -61.2
 
 ![Reconstruction from 32 simulated dithered camera images With Subpixel Normalization](reconstruct_improved.png "M81-M82")
+
+## Usage
+
+Requires node 23.
+
+Install dependencies with `npm install`
+
+run camera simulator with `node index.ts`
+
+run stack simulator with `node reconstruct.ts`
+
+run subpixel normalization stack simulator with `node reconstruct_improved.ts`
+
+The input image needs a 2048x2048 version and a 1024x1024 version. The 2048x2048 version is set in index.ts line 115. The 1024x1024 version is used to calculate SSIMULACRA2 set in reconstruct.ts line 120 and reconstruct-improved.ts line 157.
