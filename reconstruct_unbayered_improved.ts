@@ -10,39 +10,40 @@ const WIDTH = 256;
 const HEIGHT = 256;
 const HIGH_RES_FACTOR = 4;
 
-function generateBayerMatrix(): Uint8ClampedArray {
-    const data = new Uint8ClampedArray(WIDTH * HEIGHT * 4);
+function generateDrizzleGrid(): Uint8ClampedArray {
+  const data = new Uint8ClampedArray(WIDTH * HEIGHT * HIGH_RES_FACTOR * HIGH_RES_FACTOR * 4);
 
-    for (let y = 0; y < HEIGHT; y++) {
-        for (let x = 0; x < WIDTH; x++) {
-            const i = (y * WIDTH + x) * 4;
-
-            // RGGB pattern
-            const isEvenRow = y % 2 === 0;
-            const isEvenCol = x % 2 === 0;
-
-            data[i + 0] = isEvenRow && isEvenCol ? 255 : 0;          // Red
-            data[i + 1] = (!isEvenRow && isEvenCol) || (isEvenRow && !isEvenCol) ? 255 : 0; // Green
-            data[i + 2] = !isEvenRow && !isEvenCol ? 255 : 0;        // Blue
-            data[i + 3] = 255;                                       // Alpha
+  for (let y = 0; y < HEIGHT * HIGH_RES_FACTOR; y++) {
+    for (let x = 0; x < WIDTH * HIGH_RES_FACTOR; x++) {
+      const keepY = y % 4 === 0 || y % 4 === 1;
+      const keepX = x % 4 === 0 || x % 4 === 1;
+      const i = (y * WIDTH * HIGH_RES_FACTOR + x) * 4;
+      for (let c = 0; c < 3; c++) {
+        if (!keepX || !keepY) {
+          data[i + c] = 0;
+          continue;
         }
+        data[i + c] = 255;
+      }
+      data[i + 3] = 255;
     }
+  }
 
-    return data;
+  return data;
 }
-  
-async function saveBayerMatrix() {
-    const pixelData = generateBayerMatrix();
-    const canvas = createCanvas(WIDTH, HEIGHT);
+
+async function saveDrizzleGrid() {
+    const pixelData = generateDrizzleGrid();
+    const canvas = createCanvas(WIDTH * HIGH_RES_FACTOR, HEIGHT * HIGH_RES_FACTOR);
     const ctx = canvas.getContext('2d');
-    const imageData = new ImageData(pixelData, WIDTH, HEIGHT);
+    const imageData = new ImageData(pixelData, WIDTH * HIGH_RES_FACTOR, HEIGHT * HIGH_RES_FACTOR);
     ctx.putImageData(imageData, 0, 0);
 
-    const out = fs.createWriteStream(path.join(OUTPUT_DIR, 'bayerMatrix.png'));
+    const out = fs.createWriteStream(path.join(OUTPUT_DIR, 'drizzleGrid.png'));
     const stream = canvas.createPNGStream();
     stream.pipe(out);
     await new Promise((resolve) => out.on('finish', resolve));
-    console.log('✅ Bayer matrix saved to bayerMatrix.png');
+    console.log('✅ Drizzle Grid saved to drizzleGrid.png');
 }
 
 async function reconstructImage() {
@@ -55,14 +56,14 @@ async function reconstructImage() {
 
   const accumulator = new Float32Array(highResWidth * highResHeight * 4);
   const patternAccumulator = new Float32Array(highResWidth * highResHeight * 4);
+  
+  await saveDrizzleGrid(); // Save the Bayer matrix for reference
 
-  await saveBayerMatrix(); // Save the Bayer matrix for reference
-
-  const bayerMaskFilePath = path.join(OUTPUT_DIR, 'bayerMatrix.png');
-  const bayerMask = await loadImage(bayerMaskFilePath);
+  const drizzleGridFilePath = path.join(OUTPUT_DIR, 'drizzleGrid.png');
+  const drizzleGrid = await loadImage(drizzleGridFilePath);
 
   for (let i = 0; i < NUM_IMAGES; i++) {
-    const filePath = path.join(INPUT_DIR, `bayered_${i + 1}.png`);
+    const filePath = path.join(INPUT_DIR, `unbayered_${i + 1}.png`);
     const img = await loadImage(filePath);
 
     const canvas = createCanvas(highResWidth, highResHeight);
@@ -73,19 +74,56 @@ async function reconstructImage() {
     const patternCtx = patternCanvas.getContext('2d');
     patternCtx.imageSmoothingEnabled = false;
 
+    ctx.drawImage(img, 0, 0, highResWidth, highResHeight);
+
+    const inputData = ctx.getImageData(0, 0, highResWidth , highResHeight);
+    const inputPixels = inputData.data;
+
+    const drizzleCanvas = createCanvas(highResWidth, highResHeight);
+    const drizzleCtx = drizzleCanvas.getContext('2d');
+    drizzleCtx.imageSmoothingEnabled = false;
+    const outputData = drizzleCtx.createImageData(highResWidth, highResHeight);
+    const outputPixels = outputData.data;
+
+    for (let y = 0; y < highResHeight; y++) {
+      for (let x = 0; x < highResWidth; x++) {
+        const keepY = y % 4 === 0 || y % 4 === 1;
+        const keepX = x % 4 === 0 || x % 4 === 1;
+        if (!keepX || !keepY) {
+          const i = (y * highResWidth + x) * 4;
+          for (let c = 0; c < 4; c++) {
+            if (c === 3) {
+              outputPixels[i + c] = 255;
+            }
+          }
+          continue;
+        };
+  
+        const i = (y * highResWidth + x) * 4;
+        for (let c = 0; c < 4; c++) {
+          outputPixels[i + c] = inputPixels[i + c];
+        }
+      }
+    }
+
+    const tempCanvas = createCanvas(highResWidth, highResHeight);
+    const tempCtx = tempCanvas.getContext('2d');
+    tempCtx.imageSmoothingEnabled = false;
+    tempCtx.putImageData(outputData, 0, 0);
+
     const transform = transforms[i];
     //const angleRad = -transform.rotation * (Math.PI / 180); // inverse rotation
 
-    ctx.translate((highResWidth / 2) - transform.dx, (highResHeight / 2) - transform.dy);
+    drizzleCtx.translate((highResWidth / 2) - transform.dx, (highResHeight / 2) - transform.dy);
     //ctx.rotate(angleRad);
-    ctx.drawImage(img, -highResWidth / 2, -highResHeight / 2, highResWidth, highResHeight);
+    drizzleCtx.drawImage(tempCanvas, -highResWidth / 2, -highResHeight / 2, highResWidth, highResHeight);
 
-    const imageData = ctx.getImageData(0, 0, highResWidth, highResHeight);
+    const imageData = drizzleCtx.getImageData(0, 0, highResWidth, highResHeight);
     const data = imageData.data;
 
     patternCtx.translate((highResWidth / 2) - transform.dx, (highResHeight / 2) - transform.dy);
     //ctx.rotate(angleRad);
-    patternCtx.drawImage(bayerMask, -highResWidth / 2, -highResHeight / 2, highResWidth, highResHeight);
+    patternCtx.drawImage(drizzleGrid, -highResWidth / 2, -highResHeight / 2, highResWidth, highResHeight);
 
     const patternImageData = patternCtx.getImageData(0, 0, highResWidth, highResHeight);
     const patternData = patternImageData.data;
@@ -97,7 +135,7 @@ async function reconstructImage() {
 
     // Export result
     const out = fs.createWriteStream(path.join(OUTPUT_DIR, `reconstructed_${i + 1}.png`));
-    const stream = canvas.createPNGStream();
+    const stream = drizzleCanvas.createPNGStream();
     stream.pipe(out);
     await new Promise((resolve) => out.on('finish', resolve));
   }
@@ -105,7 +143,7 @@ async function reconstructImage() {
   const averaged = new Uint8ClampedArray(accumulator.length);
   for (let i = 0; i < accumulator.length; i += 4) {
     averaged[i] = Math.min(255, accumulator[i] / NUM_IMAGES);       // Red
-    averaged[i + 1] = Math.min(255, accumulator[i + 1] / NUM_IMAGES); // Green (adjusted!)
+    averaged[i + 1] = Math.min(255, accumulator[i + 1] / NUM_IMAGES); // Green
     averaged[i + 2] = Math.min(255, accumulator[i + 2] / NUM_IMAGES);     // Blue
     averaged[i + 3] = 255;
   }
@@ -147,14 +185,14 @@ async function reconstructImage() {
   highResImageData.data.set(averaged);
   highResCtx.putImageData(highResImageData, 0, 0);
 
-  const out = fs.createWriteStream('reconstruct_improved.png');
+  const out = fs.createWriteStream('reconstruct_unbayered_improved.png');
   const stream = highResCanvas.createPNGStream();
   stream.pipe(out);
   await new Promise((resolve) => out.on('finish', resolve));
 
-  console.log('✅ Reconstructed image saved as "reconstruct_improved.png"');
+  console.log('✅ Reconstructed image saved as "reconstruct_unbayered_improved.png"');
 
-  getScore('./M81-M82-1024.png', './reconstruct_improved.png').then(score => {
+  getScore('./M81-M82-1024.png', './reconstruct_unbayered_improved.png').then(score => {
     console.log('ssimulacra2 score:', score);
   });
 }
