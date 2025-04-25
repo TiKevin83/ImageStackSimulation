@@ -102,49 +102,67 @@ async function reconstructImage() {
     await new Promise((resolve) => out.on('finish', resolve));
   }
 
-  const averaged = new Uint8ClampedArray(accumulator.length);
+  const stack = new Uint8ClampedArray(accumulator.length);
   for (let i = 0; i < accumulator.length; i += 4) {
-    averaged[i] = Math.min(255, accumulator[i] / NUM_IMAGES);       // Red
-    averaged[i + 1] = Math.min(255, accumulator[i + 1] / NUM_IMAGES); // Green (adjusted!)
-    averaged[i + 2] = Math.min(255, accumulator[i + 2] / NUM_IMAGES);     // Blue
-    averaged[i + 3] = 255;
+    stack[i] = Math.min(255, accumulator[i] / NUM_IMAGES);       // Red
+    stack[i + 1] = Math.min(255, accumulator[i + 1] / NUM_IMAGES); // Green (adjusted!)
+    stack[i + 2] = Math.min(255, accumulator[i + 2] / NUM_IMAGES);     // Blue
+    stack[i + 3] = 255;
   }
 
-  const patternAveraged = new Uint8ClampedArray(patternAccumulator.length);
-  for (let i = 0; i < patternAccumulator.length; i += 4) {
-    patternAveraged[i] = Math.min(255, patternAccumulator[i] / NUM_IMAGES);       // Red
-    patternAveraged[i + 1] = Math.min(255, patternAccumulator[i + 1] / NUM_IMAGES); // Green (no need to adjust because of subpixel normalization)
-    patternAveraged[i + 2] = Math.min(255, patternAccumulator[i + 2] / NUM_IMAGES);     // Blue
-    patternAveraged[i + 3] = 255;
-  }
-
+  const patternStack = new Uint8ClampedArray(patternAccumulator.length);
   let averagePattern = 0;
   let sampleCount = 0
   for (let i = 0; i < patternAccumulator.length; i += 4) {
-    averagePattern += patternAveraged[i];
-    averagePattern += patternAveraged[i + 1];
-    averagePattern += patternAveraged[i + 2];
+    patternStack[i] = Math.min(255, patternAccumulator[i] / NUM_IMAGES);       // Red
+    patternStack[i + 1] = Math.min(255, patternAccumulator[i + 1] / NUM_IMAGES); // Green (no need to adjust because of subpixel normalization)
+    patternStack[i + 2] = Math.min(255, patternAccumulator[i + 2] / NUM_IMAGES);     // Blue
+    patternStack[i + 3] = 255;
+    averagePattern += patternStack[i];
+    averagePattern += patternStack[i + 1];
+    averagePattern += patternStack[i + 2];
     sampleCount += 3;
   }
 
   averagePattern /= sampleCount;
 
+  const displayPattern = new Uint8ClampedArray(patternAccumulator.length);
+  for (let i = 0; i < patternAccumulator.length; i += 4) {
+    displayPattern[i] = Math.min(255, patternStack[i] / averagePattern * 85);       // Red
+    displayPattern[i + 1] = Math.min(255, patternStack[i + 1] / averagePattern * 85); // Green (no need to adjust because of subpixel normalization)
+    displayPattern[i + 2] = Math.min(255, patternStack[i + 2] / averagePattern * 85);     // Blue
+    displayPattern[i + 3] = 255;
+  }
+
+  const displayPatternCanvas = createCanvas(highResWidth, highResHeight);
+  const displayPatternCtx = displayPatternCanvas.getContext('2d');
+  const displayPatternImageData = displayPatternCtx.createImageData(highResWidth, highResHeight);
+  displayPatternImageData.data.set(displayPattern);
+  displayPatternCtx.putImageData(displayPatternImageData, 0, 0);
+
+  const patternOut = fs.createWriteStream('patternVisualization.png');
+  const patternStream = displayPatternCanvas.createPNGStream();
+  patternStream.pipe(patternOut);
+  await new Promise((resolve) => patternOut.on('finish', resolve));
+
+  console.log('✅ Visualization of Subtracted Moire pattern saved as "patternVisualization.png"');
+
   for (let i = 0; i < accumulator.length; i += 4) {
     for (let c = 0; c < 3; c++) {
       const patternValue = patternAccumulator[i + c];
       if (patternValue > 0) {
-        averaged[i + c] = Math.min(255, accumulator[i + c] / (patternValue / averagePattern / 4));
+        stack[i + c] = Math.min(255, accumulator[i + c] / (patternValue / averagePattern / 3));
       } else {
-        averaged[i + c] = 0;
+        stack[i + c] = 0;
       }
     }
-    averaged[i + 3] = 255;
+    stack[i + 3] = 255;
   }
 
   const highResCanvas = createCanvas(highResWidth, highResHeight);
   const highResCtx = highResCanvas.getContext('2d');
   const highResImageData = highResCtx.createImageData(highResWidth, highResHeight);
-  highResImageData.data.set(averaged);
+  highResImageData.data.set(stack);
   highResCtx.putImageData(highResImageData, 0, 0);
 
   const out = fs.createWriteStream('reconstruct_improved.png');

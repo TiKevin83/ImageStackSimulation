@@ -2,9 +2,13 @@
 
 This project aims to be a playground for simulating stacked undersampled image reconstruction. In `index.ts` a camera is simulated to take "pictures" of an input image. In reconstruct.ts, a primitive image stacker is used as a baseline. In reconstruct_improved.ts, a subpixel-level normalization step is added.
 
+## Background Introduction
+
+Moiré patterns are created by interference when a pattern ruled to a grid with gaps is shifted and/or rotated overtop of an identical pattern. When using CFA/Bayered data or drizzling data bayered or mono, the gaps in color or in whole pixels exist to cause such an interference pattern. Another way of thinking about it is that the different output color subpixels end up being "observed" for different amounts of time. A reconstruction of the resulting artifact is shown below.
+
 ## Fixed Pixel Grid and Bayer Pattern Normalization
 
-The immediate goal is to document a technique I thought of for improving image stacking, especially of CFA drizzle bayered images, but also applicable to mono when drizzling with a fractional pixel factor. This improvement involves a subpixel-level normalization process which replaces the typical end normalization step in stacking. At registration time, a copy of each input image is registered with only the fixed pixel grid pattern and not the relative values of the pixels, and these registered fixed grid patterns are then stacked as well, such that whenever an input pixel is used for the final stack it's corresponding registered pixel grid pattern is added. The resulting stack which I'm calling the "imaging grid time observed pattern map" or "bayer time observed pattern map" for CFA images can then be divided out of the final image, virtually eliminating fixed grid noise introduced by the shapes of input pixels themselves and/or bayer patterns as long as each output point is observed at least once for each color.
+The immediate goal is to document a technique I thought of for improving image stacking, especially of CFA drizzle bayered images, but also applicable to mono when drizzling with a fractional pixel factor. This improvement involves a subpixel-level normalization process which replaces the typical end normalization step in stacking. At registration time, a copy of each input image is registered with only the fixed pixel grid pattern and not the relative values of the pixels, and these registered fixed grid patterns are then stacked as well, such that whenever an input pixel is used for the final stack its corresponding registered pixel grid pattern is added. The resulting stack which I'm calling the "imaging grid time observed pattern map" or "bayer time observed pattern map" for CFA images can then be divided out of the final image, virtually eliminating fixed grid noise introduced by the shapes of input pixels themselves and/or bayer patterns as long as each output point is observed at least once for each color.
 
 The technique is applicable to drizzle stacking of CFA data at any scale level and to drizzle stacking of mono data with pixel fraction less than image scale.
 
@@ -20,13 +24,17 @@ Original Image rescaled to output size:
 
 Reconstruction from 32 simulated bayered dithered camera images Without Subpixel Normalization
 
-SSIMULACRA2 score -89.4 (better values increase towards 100)
+SSIMULACRA2 score -245.1120366235277 (better values increase towards 100)
 
 ![Reconstruction from 32 simulated bayered dithered camera images Without Subpixel Normalization](reconstructed.png "M81-M82")
 
+Visualization of the aliasing/moire pattern recovered by the algorithm, passing neutral white frames through the bayer matrix and shifts/rotations simulated by camera dithering and stacking them.
+
+![Visualization of the aliasing/moire pattern recovered by the algorithm, passing neutral white frames through the bayer matrix and shifts/rotations simulated by camera dithering and stacking them](patternVisualization.png "Visualized Pattern to Divide Out")
+
 Reconstruction from 32 simulated bayered dithered camera images With Subpixel Normalization using the "imaging grid time observed pattern map"
 
-SSIMULACRA2 score -61.2
+SSIMULACRA2 score -94.2
 
 ![Reconstruction from 32 simulated bayered dithered camera images With Subpixel Normalization](reconstruct_improved.png "M81-M82")
 

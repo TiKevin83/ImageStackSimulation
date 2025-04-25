@@ -51,9 +51,9 @@ async function reconstructImage() {
 
   const averaged = new Uint8ClampedArray(accumulator.length);
   for (let i = 0; i < accumulator.length; i += 4) {
-    averaged[i] = Math.min(255, accumulator[i] / NUM_IMAGES * 4);       // Red
-    averaged[i + 1] = Math.min(255, accumulator[i + 1] / NUM_IMAGES * 2); // Green (adjusted!)
-    averaged[i + 2] = Math.min(255, accumulator[i + 2] / NUM_IMAGES * 4);     // Blue
+    averaged[i] = Math.min(255, accumulator[i] / NUM_IMAGES);       // Red
+    averaged[i + 1] = Math.min(255, accumulator[i + 1] / NUM_IMAGES); // Green (adjusted!)
+    averaged[i + 2] = Math.min(255, accumulator[i + 2] / NUM_IMAGES);     // Blue
     averaged[i + 3] = 255;
   }
 
